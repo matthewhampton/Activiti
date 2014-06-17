@@ -31,6 +31,7 @@ import org.activiti.bpmn.model.FlowElement;
 import org.activiti.bpmn.model.FlowElementsContainer;
 import org.activiti.bpmn.model.Gateway;
 import org.activiti.bpmn.model.GraphicInfo;
+import org.activiti.bpmn.model.Lane;
 import org.activiti.bpmn.model.Process;
 import org.activiti.bpmn.model.SequenceFlow;
 import org.activiti.bpmn.model.SubProcess;
@@ -72,6 +73,7 @@ public class BpmnAutoLayout {
   protected Map<String, FlowElement> handledFlowElements;
   protected Map<String, Object> generatedVertices;
   protected Map<String, Object> generatedEdges;
+  protected Map<String, Object> elementParent;
   
   public BpmnAutoLayout(BpmnModel bpmnModel) {
     this.bpmnModel = bpmnModel;
@@ -92,6 +94,22 @@ public class BpmnAutoLayout {
     graph = new mxGraph();
     cellParent = graph.getDefaultParent();
     graph.getModel().beginUpdate();
+    
+    elementParent = new HashMap<String, Object>();
+    if (flowElementsContainer instanceof Process)
+    {
+    	Process process = (Process)flowElementsContainer;
+    	for (Lane lane : process.getLanes()) 
+    	{
+    		mxCell swimLane = (mxCell)graph.insertVertex(
+    				cellParent, null, "", 0, 0, 0, 0, 
+    				"shape=swimlane;fontSize=9;fontStyle=1;startSize=20;horizontal=false;autosize=1;");
+    		for (String elementId : lane.getFlowReferences())
+    		{
+    			elementParent.put(elementId, swimLane);
+    		}
+    	}
+    }
     
     handledFlowElements = new HashMap<String, FlowElement>();
     generatedVertices = new HashMap<String, Object>();
@@ -215,7 +233,7 @@ public class BpmnAutoLayout {
     boundaryEdgeStyle.put(mxConstants.STYLE_EXIT_Y, 1.0);
     boundaryEdgeStyle.put(mxConstants.STYLE_ENTRY_X, 0.5);
     boundaryEdgeStyle.put(mxConstants.STYLE_ENTRY_Y, 1.0);
-    boundaryEdgeStyle.put(mxConstants.STYLE_EDGE, mxEdgeStyle.orthConnector);
+    boundaryEdgeStyle.put(mxConstants.STYLE_EDGE, mxEdgeStyle.OrthConnector);
     graph.getStylesheet().putCellStyle(STYLE_BOUNDARY_SEQUENCEFLOW, boundaryEdgeStyle);
     
     for (SequenceFlow sequenceFlow : sequenceFlows.values()) {
