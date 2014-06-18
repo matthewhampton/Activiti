@@ -67,13 +67,13 @@ public class BpmnAutoLayout {
   protected int subProcessMargin = 20;
   
   protected mxGraph graph;
-  protected Object cellParent;
+  private Object cellParent;
   protected Map<String, SequenceFlow> sequenceFlows;
   protected List<BoundaryEvent> boundaryEvents;
   protected Map<String, FlowElement> handledFlowElements;
   protected Map<String, Object> generatedVertices;
   protected Map<String, Object> generatedEdges;
-  protected Map<String, Object> elementParent;
+  protected Map<String, mxCell> elementParent;
   
   public BpmnAutoLayout(BpmnModel bpmnModel) {
     this.bpmnModel = bpmnModel;
@@ -95,7 +95,8 @@ public class BpmnAutoLayout {
     cellParent = graph.getDefaultParent();
     graph.getModel().beginUpdate();
     
-    elementParent = new HashMap<String, Object>();
+    List<mxCell> laneCells = new ArrayList<mxCell>();
+    elementParent = new HashMap<String, mxCell>();
     if (flowElementsContainer instanceof Process)
     {
     	Process process = (Process)flowElementsContainer;
@@ -104,6 +105,7 @@ public class BpmnAutoLayout {
     		mxCell swimLane = (mxCell)graph.insertVertex(
     				cellParent, null, "", 0, 0, 0, 0, 
     				"shape=swimlane;fontSize=9;fontStyle=1;startSize=20;horizontal=false;autosize=1;");
+    		laneCells.add(swimLane);
     		for (String elementId : lane.getFlowReferences())
     		{
     			elementParent.put(elementId, swimLane);
@@ -150,8 +152,14 @@ public class BpmnAutoLayout {
     layout.setMoveParent(true);
     layout.setDisableEdgeStyle(false);
     layout.setUseBoundingBox(true);
-    layout.execute(graph.getDefaultParent());
     
+    for (mxCell swimLaneCell : laneCells)
+    {
+    	layout.execute(swimLaneCell);
+    }
+    	
+    layout.execute(graph.getDefaultParent());    
+
     graph.getModel().endUpdate();
     
     generateDiagramInterchangeElements();
@@ -181,7 +189,7 @@ public class BpmnAutoLayout {
   }
   
   protected void handleActivity(FlowElement flowElement) {
-    Object activityVertex = graph.insertVertex(cellParent, flowElement.getId(), "", 0, 0, taskWidth, taskHeight);
+    Object activityVertex = graph.insertVertex(getCellParent(flowElement), flowElement.getId(), "", 0, 0, taskWidth, taskHeight, "");
     generatedVertices.put(flowElement.getId(), activityVertex);
   }
   
@@ -191,7 +199,7 @@ public class BpmnAutoLayout {
     
     double subProcessWidth = bpmnAutoLayout.getGraph().getView().getGraphBounds().getWidth();
     double subProcessHeight = bpmnAutoLayout.getGraph().getView().getGraphBounds().getHeight();
-    Object subProcessVertex = graph.insertVertex(cellParent, flowElement.getId(), "", 0, 0, 
+    Object subProcessVertex = graph.insertVertex(getCellParent(flowElement), flowElement.getId(), "", 0, 0, 
             subProcessWidth + 2 * subProcessMargin, subProcessHeight + 2 * subProcessMargin);
     generatedVertices.put(flowElement.getId(), subProcessVertex);
   }
@@ -213,44 +221,23 @@ public class BpmnAutoLayout {
       } else {
         throw new RuntimeException("Could not generate DI: boundaryEvent '" + boundaryEvent.getId() + "' has no attachedToRef");
       }
-      
+      if (portParent == null)
+      {
+    	  throw new RuntimeException("Could not generate DI: boundaryEvent '" + boundaryEvent.getId() + "' has no matching attachedToRef");
+      }
       graph.addCell(boundaryPort, portParent);
       generatedVertices.put(boundaryEvent.getId(), boundaryPort);
     }
   }
   
   protected void handleSequenceFlow() {
-    
-    Hashtable<String, Object> edgeStyle = new Hashtable<String, Object>();
-    edgeStyle.put(mxConstants.STYLE_ORTHOGONAL, true);
-    edgeStyle.put(mxConstants.STYLE_EDGE, mxEdgeStyle.ElbowConnector);
-    edgeStyle.put(mxConstants.STYLE_ENTRY_X, 0.0);
-    edgeStyle.put(mxConstants.STYLE_ENTRY_Y, 0.5);
-    graph.getStylesheet().putCellStyle(STYLE_SEQUENCEFLOW, edgeStyle);
-    
-    Hashtable<String, Object> boundaryEdgeStyle = new Hashtable<String, Object>();
-    boundaryEdgeStyle.put(mxConstants.STYLE_EXIT_X, 0.5);
-    boundaryEdgeStyle.put(mxConstants.STYLE_EXIT_Y, 1.0);
-    boundaryEdgeStyle.put(mxConstants.STYLE_ENTRY_X, 0.5);
-    boundaryEdgeStyle.put(mxConstants.STYLE_ENTRY_Y, 1.0);
-    boundaryEdgeStyle.put(mxConstants.STYLE_EDGE, mxEdgeStyle.OrthConnector);
-    graph.getStylesheet().putCellStyle(STYLE_BOUNDARY_SEQUENCEFLOW, boundaryEdgeStyle);
-    
+        
     for (SequenceFlow sequenceFlow : sequenceFlows.values()) {
       Object sourceVertex = generatedVertices.get(sequenceFlow.getSourceRef());
       Object targertVertex = generatedVertices.get(sequenceFlow.getTargetRef());
       
-      String style = null;
-     
-      if (handledFlowElements.get(sequenceFlow.getSourceRef()) instanceof BoundaryEvent) {
-        // Sequence flow out of boundary events are handled in a different way,
-        // to make them visually appealing for the eye of the dear end user.
-        style = STYLE_BOUNDARY_SEQUENCEFLOW;
-      } else {
-        style = STYLE_SEQUENCEFLOW;
-      }
-      
-      Object sequenceFlowEdge = graph.insertEdge(cellParent, sequenceFlow.getId(), "", sourceVertex, targertVertex, style);
+      Object sequenceFlowEdge = graph.insertEdge(getCellParent(sequenceFlow), sequenceFlow.getId(), "", sourceVertex, targertVertex, 
+    		  "edgeStyle=orthogonalEdgeStyle");
       generatedEdges.put(sequenceFlow.getId(), sequenceFlowEdge);
     }
   }
@@ -259,27 +246,14 @@ public class BpmnAutoLayout {
   
   protected void createEventVertex(FlowElement flowElement) {
     // Add styling for events if needed
-    if (!graph.getStylesheet().getStyles().containsKey(STYLE_EVENT)) {
-      Hashtable<String, Object> eventStyle = new Hashtable<String, Object>();
-      eventStyle.put(mxConstants.STYLE_SHAPE, mxConstants.SHAPE_ELLIPSE);
-      graph.getStylesheet().putCellStyle(STYLE_EVENT, eventStyle);  
-    }
-    
     // Add vertex representing event to graph
-    Object eventVertex = graph.insertVertex(cellParent, flowElement.getId(), "", 0, 0, eventSize, eventSize, STYLE_EVENT);
+    Object eventVertex = graph.insertVertex(getCellParent(flowElement), flowElement.getId(), "", 0, 0, eventSize, eventSize, "shape=ellipse;perimeter=ellipsePerimeter");
     generatedVertices.put(flowElement.getId(), eventVertex);
   }
   
   protected void createGatewayVertex(FlowElement flowElement) {
-    // Add styling for gateways if needed
-    if (graph.getStylesheet().getStyles().containsKey(STYLE_GATEWAY)) {
-      Hashtable<String, Object> style = new Hashtable<String, Object>();
-      style.put(mxConstants.STYLE_SHAPE, mxConstants.SHAPE_RHOMBUS);
-      graph.getStylesheet().putCellStyle(STYLE_GATEWAY, style);
-    }
-    
     // Create gateway node 
-    Object gatewayVertex = graph.insertVertex(cellParent, flowElement.getId(), "", 0, 0, gatewaySize, gatewaySize, STYLE_GATEWAY);
+    Object gatewayVertex = graph.insertVertex(getCellParent(flowElement), flowElement.getId(), "", 0, 0, gatewaySize, gatewaySize, "shape=rhombus;perimeter=rhombusPerimeter");
     generatedVertices.put(flowElement.getId(), gatewayVertex);
   }
   
@@ -490,7 +464,17 @@ public class BpmnAutoLayout {
     this.subProcessMargin = subProcessMargin;
   }
 
-  // Due to a bug (see http://forum.jgraph.com/questions/5952/mxhierarchicallayout-not-correct-when-using-child-vertex)
+  protected Object getCellParent(FlowElement flowElement) {
+	Object p = elementParent.get(flowElement.getId());
+	if (p == null)
+	{
+		return cellParent;
+	}
+	return p;
+  }
+
+
+// Due to a bug (see http://forum.jgraph.com/questions/5952/mxhierarchicallayout-not-correct-when-using-child-vertex)
   // We must extend the default hierarchical layout to tweak it a bit (see url link) otherwise the layouting crashes.
   //
   // Verify again with a later release if fixed (ie the mxHierarchicalLayout can be used directly)
