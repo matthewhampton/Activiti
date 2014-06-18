@@ -236,8 +236,21 @@ public class BpmnAutoLayout {
       Object sourceVertex = generatedVertices.get(sequenceFlow.getSourceRef());
       Object targertVertex = generatedVertices.get(sequenceFlow.getTargetRef());
       
-      Object sequenceFlowEdge = graph.insertEdge(getCellParent(sequenceFlow), sequenceFlow.getId(), "", sourceVertex, targertVertex, 
-    		  "edgeStyle=orthogonalEdgeStyle");
+      String style = null;
+       
+      if (handledFlowElements.get(sequenceFlow.getSourceRef()) instanceof BoundaryEvent) 
+      {
+    	  // Sequence flow out of boundary events are handled in a different way,
+		  // to make them visually appealing for the eye of the dear end user.
+		  style = "edgeStyle=orthogonalEdgeStyle";
+      }
+      else
+      {
+		  style = "orthogonal=true;edgeStyle=elbowEdgeStyle";
+      }
+      
+      Object sequenceFlowEdge = graph.insertEdge(getCellParent(sequenceFlow), sequenceFlow.getId(), "", sourceVertex, targertVertex, style);
+    		  
       generatedEdges.put(sequenceFlow.getId(), sequenceFlowEdge);
     }
   }
