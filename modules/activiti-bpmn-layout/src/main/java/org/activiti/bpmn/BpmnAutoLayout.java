@@ -106,10 +106,11 @@ public class BpmnAutoLayout {
     if (flowElementsContainer instanceof Process)
     {
     	Process process = (Process)flowElementsContainer;
+    	int i = 0;
     	for (Lane lane : process.getLanes()) 
     	{
     		mxCell swimLane = (mxCell)graph.insertVertex(
-    				cellParent, null, "", 0, 0, 0, 0, 
+    				cellParent, null, ++i, 0, 0, 0, 0, 
     				"shape=swimlane;fontSize=9;fontStyle=1;startSize=20;horizontal=false;autosize=1;");
     		laneCells.add(swimLane);
     		for (String elementId : lane.getFlowReferences())
@@ -123,6 +124,7 @@ public class BpmnAutoLayout {
     generatedVertices = new HashMap<String, Object>();
     generatedEdges = new HashMap<String, Object>();
     fakeEdges = new HashSet<Object>();
+    Set<Object> fakeVertices = new HashSet<Object>();
     
     sequenceFlows = new HashMap<String, SequenceFlow>(); // Sequence flow are gathered and processed afterwards, because we must be sure we alreadt found source and target
     boundaryEvents = new ArrayList<BoundaryEvent>(); // Boundary events are gathered and processed afterwards, because we must be sure we have its parent
@@ -166,13 +168,36 @@ public class BpmnAutoLayout {
     
     for (mxCell swimLaneCell : laneCells)
     {
-    	layout.execute(swimLaneCell);
+    	boolean done = false;
+    	while (!done)
+    	{
+    		layout.execute(swimLaneCell);
+    		if (layout.getRoots().size() > 1)
+    		{
+    			Object v = graph.insertVertex(swimLaneCell, null, null, 0, 0, 1, 1);
+    			fakeVertices.add(v);
+    			for (Object r: layout.getRoots())
+    			{
+	    			fakeEdges.add(graph.insertEdge(
+	    					swimLaneCell, 
+	    					null, null, 
+	    					v, r));
+    			}
+    		}
+    		else
+    		{
+    			done = true;
+    		}
+    	}
+    	
+    	
     }
     	
-    layout.execute(graph.getDefaultParent());    
+    layout.execute(graph.getDefaultParent(), Arrays.asList(laneCells.toArray()));    
     
 	graph.removeCells(fakeEdges.toArray());
-
+	graph.removeCells(fakeVertices.toArray());
+	
     graph.getModel().endUpdate();
     
     generateDiagramInterchangeElements();
@@ -246,8 +271,8 @@ public class BpmnAutoLayout {
   protected void handleSequenceFlow() {
         
     for (SequenceFlow sequenceFlow : sequenceFlows.values()) {
-      Object sourceVertex = generatedVertices.get(sequenceFlow.getSourceRef());
-      Object targertVertex = generatedVertices.get(sequenceFlow.getTargetRef());
+      mxCell sourceVertex = (mxCell)generatedVertices.get(sequenceFlow.getSourceRef());
+      mxCell targertVertex = (mxCell)generatedVertices.get(sequenceFlow.getTargetRef());
       
       String style = null;
        
@@ -257,13 +282,32 @@ public class BpmnAutoLayout {
     	  
     	  // Sequence flow out of boundary events are handled in a different way,
 		  // to make them visually appealing for the eye of the dear end user.
-		  style = "edgeStyle=orthogonalEdgeStyle";
+		  style = "edgeStyle=orthogonalEdgeStyle;entryX=0.5;entryY=1.0;exitX=0.5;exitY=1.0;";
 		  //Insert a fake edge from the parent, so that the tree is held together:
 		  fakeEdges.add(graph.insertEdge(getCellParent(sequenceFlow), sequenceFlow.getId(), "", generatedVertices.get(e.getAttachedToRefId()), targertVertex, style));
       }
       else
       {
-		  style = "orthogonal=true;edgeStyle=elbowEdgeStyle";
+		  int fromLaneNr = (Integer)sourceVertex.getParent().getValue();
+		  int toLaneNr = (Integer)targertVertex.getParent().getValue();
+		  if (fromLaneNr == toLaneNr)
+		  {
+			  style = "orthogonal=true;edgeStyle=elbowEdgeStyle";
+			  style += ";entryX=0;entryY=0.5;";
+		  }
+		  else if (fromLaneNr < toLaneNr)
+		  {
+			  style = "edgeStyle=segmentEdgeStyle";
+			  //style += ";entryX=0.3;entryY=0;exitX=0.7;exitY=1;";
+			  style += "entryY=0;exitY=1;";
+		  }
+		  else
+		  {
+			  style = "edgeStyle=segmentEdgeStyle";
+			  //style += ";entryX=0.3;entryY=1.0;exitX=0.7;exitY=0";
+			  style += ";entryY=1.0;exitY=0";
+		  }
+		  
       }
       
       Object sequenceFlowEdge = graph.insertEdge(getCellParent(sequenceFlow), sequenceFlow.getId(), "", sourceVertex, targertVertex, style);
@@ -515,57 +559,10 @@ public class BpmnAutoLayout {
       this.traverseAncestors = false;
     }
     
-    protected void traverse(Object vertex, boolean directed, Object edge,
-			Set<Object> allVertices, Set<Object> currentComp,
-			List<Set<Object>> hierarchyVertices, Set<Object> filledVertexSet)
-	{
-    	boolean traverse = false;
-		if (vertex != null && allVertices != null)
-		{
-			// Has this vertex been seen before in any traversal
-			// And if the filled vertex set is populated, only 
-			// process vertices in that it contains
-			if (!allVertices.contains(vertex)
-					&& (filledVertexSet == null ? true : filledVertexSet
-							.contains(vertex)))
-			{
-				traverse = true;
-			}
-		}
-		super.traverse(vertex, directed, edge, allVertices, currentComp, hierarchyVertices, filledVertexSet);
-		if (traverse)
-		{
-			mxIGraphModel model = graph.getModel();
-			int n = model.getChildCount(vertex);
-			for (int i=0; i<n; i++)
-			{
-				Object child_vertex = model.getChildAt(vertex, i);
-				if (child_vertex instanceof mxCell && ((mxCell)child_vertex).getValue() instanceof BoundaryEvent)
-	    		{
-					
-	    		}
-			}
-		}
-	}
-    
-    public List<Object> findRoots(Object parent, Set<Object> vertices)
-	{
-    	List<Object> roots = new ArrayList<Object>();
-    	
-    	for (Object candidateRoot : super.findRoots(parent, vertices))
-    	{
-    		if (candidateRoot instanceof mxCell && ((mxCell)candidateRoot).getValue() instanceof BoundaryEvent)
-    		{
-    			//roots.add(candidateRoot);
-    		}
-    		else
-    		{
-    			roots.add(candidateRoot);
-    		}
-    	}
-    	
+    public List<Object> getRoots()
+    {
     	return roots;
-	}
+    }
     
   }
   
