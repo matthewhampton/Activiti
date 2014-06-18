@@ -58,10 +58,6 @@ import com.mxgraph.view.mxGraphView;
  */
 public class BpmnAutoLayout {
   
-  private static final String STYLE_EVENT = "styleEvent";
-  private static final String STYLE_GATEWAY = "styleGateway";
-  private static final String STYLE_SEQUENCEFLOW = "styleSequenceFlow";
-  private static final String STYLE_BOUNDARY_SEQUENCEFLOW = "styleBoundarySequenceFlow";
   
   protected BpmnModel bpmnModel;
   
@@ -80,6 +76,7 @@ public class BpmnAutoLayout {
   protected Map<String, Object> generatedEdges;
   protected Map<String, mxCell> elementParent;
   protected Set<Object> fakeEdges;
+  protected int direction; 
   
   public BpmnAutoLayout(BpmnModel bpmnModel) {
     this.bpmnModel = bpmnModel;
@@ -97,6 +94,7 @@ public class BpmnAutoLayout {
   }
 
   protected void layout(FlowElementsContainer flowElementsContainer) {
+	direction = SwingConstants.WEST;
     graph = new mxGraph();
     cellParent = graph.getDefaultParent();
     graph.getModel().beginUpdate();
@@ -157,7 +155,7 @@ public class BpmnAutoLayout {
     handleSequenceFlow();
     
     // All elements are now put in the graph. Let's layout them!
-    CustomLayout layout = new CustomLayout(graph, SwingConstants.WEST);
+    CustomLayout layout = new CustomLayout(graph, direction);
     layout.setIntraCellSpacing(100.0);
     layout.setResizeParent(true);
     layout.setFineTuning(true);
