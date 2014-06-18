@@ -16,9 +16,11 @@ package org.activiti.bpmn;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.Hashtable;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 
 import javax.swing.SwingConstants;
@@ -34,17 +36,20 @@ import org.activiti.bpmn.model.GraphicInfo;
 import org.activiti.bpmn.model.Lane;
 import org.activiti.bpmn.model.Process;
 import org.activiti.bpmn.model.SequenceFlow;
+import org.activiti.bpmn.model.StartEvent;
 import org.activiti.bpmn.model.SubProcess;
 import org.activiti.bpmn.model.Task;
 
 import com.mxgraph.layout.hierarchical.mxHierarchicalLayout;
 import com.mxgraph.model.mxCell;
 import com.mxgraph.model.mxGeometry;
+import com.mxgraph.model.mxIGraphModel;
 import com.mxgraph.util.mxConstants;
 import com.mxgraph.util.mxPoint;
 import com.mxgraph.view.mxCellState;
 import com.mxgraph.view.mxEdgeStyle;
 import com.mxgraph.view.mxGraph;
+import com.mxgraph.view.mxGraphView;
 
 /**
  * Auto layouts a {@link BpmnModel}.
@@ -74,6 +79,7 @@ public class BpmnAutoLayout {
   protected Map<String, Object> generatedVertices;
   protected Map<String, Object> generatedEdges;
   protected Map<String, mxCell> elementParent;
+  protected Set<Object> fakeEdges;
   
   public BpmnAutoLayout(BpmnModel bpmnModel) {
     this.bpmnModel = bpmnModel;
@@ -116,10 +122,11 @@ public class BpmnAutoLayout {
     handledFlowElements = new HashMap<String, FlowElement>();
     generatedVertices = new HashMap<String, Object>();
     generatedEdges = new HashMap<String, Object>();
+    fakeEdges = new HashSet<Object>();
     
     sequenceFlows = new HashMap<String, SequenceFlow>(); // Sequence flow are gathered and processed afterwards, because we must be sure we alreadt found source and target
     boundaryEvents = new ArrayList<BoundaryEvent>(); // Boundary events are gathered and processed afterwards, because we must be sure we have its parent
-    
+    List<Object> startEvents = new ArrayList<Object>(); 
     
     // Process all elements
     for (FlowElement flowElement : flowElementsContainer.getFlowElements()) {
@@ -128,6 +135,10 @@ public class BpmnAutoLayout {
         handleSequenceFlow((SequenceFlow) flowElement);
       } else if (flowElement instanceof Event) {
         handleEvent(flowElement);
+        if (flowElement instanceof StartEvent)
+        {
+        	startEvents.add(generatedVertices.get(flowElement.getId()));
+        }
       } else if (flowElement instanceof Gateway) {
         createGatewayVertex(flowElement);
       } else if (flowElement instanceof Task || flowElement instanceof CallActivity) {
@@ -159,6 +170,8 @@ public class BpmnAutoLayout {
     }
     	
     layout.execute(graph.getDefaultParent());    
+    
+	graph.removeCells(fakeEdges.toArray());
 
     graph.getModel().endUpdate();
     
@@ -240,9 +253,13 @@ public class BpmnAutoLayout {
        
       if (handledFlowElements.get(sequenceFlow.getSourceRef()) instanceof BoundaryEvent) 
       {
+    	  BoundaryEvent e = (BoundaryEvent)handledFlowElements.get(sequenceFlow.getSourceRef());
+    	  
     	  // Sequence flow out of boundary events are handled in a different way,
 		  // to make them visually appealing for the eye of the dear end user.
 		  style = "edgeStyle=orthogonalEdgeStyle";
+		  //Insert a fake edge from the parent, so that the tree is held together:
+		  fakeEdges.add(graph.insertEdge(getCellParent(sequenceFlow), sequenceFlow.getId(), "", generatedVertices.get(e.getAttachedToRefId()), targertVertex, style));
       }
       else
       {
@@ -497,6 +514,58 @@ public class BpmnAutoLayout {
       super(graph, orientation);
       this.traverseAncestors = false;
     }
+    
+    protected void traverse(Object vertex, boolean directed, Object edge,
+			Set<Object> allVertices, Set<Object> currentComp,
+			List<Set<Object>> hierarchyVertices, Set<Object> filledVertexSet)
+	{
+    	boolean traverse = false;
+		if (vertex != null && allVertices != null)
+		{
+			// Has this vertex been seen before in any traversal
+			// And if the filled vertex set is populated, only 
+			// process vertices in that it contains
+			if (!allVertices.contains(vertex)
+					&& (filledVertexSet == null ? true : filledVertexSet
+							.contains(vertex)))
+			{
+				traverse = true;
+			}
+		}
+		super.traverse(vertex, directed, edge, allVertices, currentComp, hierarchyVertices, filledVertexSet);
+		if (traverse)
+		{
+			mxIGraphModel model = graph.getModel();
+			int n = model.getChildCount(vertex);
+			for (int i=0; i<n; i++)
+			{
+				Object child_vertex = model.getChildAt(vertex, i);
+				if (child_vertex instanceof mxCell && ((mxCell)child_vertex).getValue() instanceof BoundaryEvent)
+	    		{
+					
+	    		}
+			}
+		}
+	}
+    
+    public List<Object> findRoots(Object parent, Set<Object> vertices)
+	{
+    	List<Object> roots = new ArrayList<Object>();
+    	
+    	for (Object candidateRoot : super.findRoots(parent, vertices))
+    	{
+    		if (candidateRoot instanceof mxCell && ((mxCell)candidateRoot).getValue() instanceof BoundaryEvent)
+    		{
+    			//roots.add(candidateRoot);
+    		}
+    		else
+    		{
+    			roots.add(candidateRoot);
+    		}
+    	}
+    	
+    	return roots;
+	}
     
   }
   
