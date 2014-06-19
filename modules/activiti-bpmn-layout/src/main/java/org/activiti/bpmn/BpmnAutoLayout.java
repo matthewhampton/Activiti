@@ -172,9 +172,10 @@ public class BpmnAutoLayout {
     		layout.execute(swimLaneCell);
     		if (layout.getRoots().size() > 1)
     		{
+    			List<Object> roots = new ArrayList<Object>(layout.getRoots());
     			Object v = graph.insertVertex(swimLaneCell, null, null, 0, 0, 1, 1);
     			fakeVertices.add(v);
-    			for (Object r: layout.getRoots())
+    			for (Object r: roots	)
     			{
 	    			fakeEdges.add(graph.insertEdge(
 	    					swimLaneCell, 
@@ -190,8 +191,14 @@ public class BpmnAutoLayout {
     	
     	
     }
-    	
-    layout.execute(graph.getDefaultParent(), Arrays.asList(laneCells.toArray()));    
+    if (laneCells.size() > 0)
+    {
+    	layout.execute(graph.getDefaultParent(), Arrays.asList(laneCells.toArray()));
+    }
+    else
+    {
+    	layout.execute(graph.getDefaultParent());
+    }
     
 	graph.removeCells(fakeEdges.toArray());
 	graph.removeCells(fakeVertices.toArray());
@@ -286,8 +293,8 @@ public class BpmnAutoLayout {
       }
       else
       {
-		  int fromLaneNr = (Integer)sourceVertex.getParent().getValue();
-		  int toLaneNr = (Integer)targertVertex.getParent().getValue();
+		  int fromLaneNr = (sourceVertex.getParent().getValue() instanceof Integer) ? (Integer)sourceVertex.getParent().getValue() : 0;
+		  int toLaneNr = (targertVertex.getParent().getValue() instanceof Integer) ? (Integer)targertVertex.getParent().getValue() : 0;
 		  if (fromLaneNr == toLaneNr)
 		  {
 			  style = "orthogonal=true;edgeStyle=elbowEdgeStyle";
@@ -545,6 +552,10 @@ public class BpmnAutoLayout {
 	return p;
   }
 
+  public Object getVertex(String id)
+  {
+	  return this.generatedVertices.get(id);
+  }
 
 // Due to a bug (see http://forum.jgraph.com/questions/5952/mxhierarchicallayout-not-correct-when-using-child-vertex)
   // We must extend the default hierarchical layout to tweak it a bit (see url link) otherwise the layouting crashes.
