@@ -679,30 +679,32 @@ public class BpmnAutoLayout {
     protected int bumpDownRank(
     		Map<Integer, Set<mxGraphHierarchyNode>> ranks, 
     		int minRank,
-    		mxGraphHierarchyNode node)
+    		mxGraphHierarchyNode node,
+    		Set<mxGraphHierarchyNode> done)
     {
+    	    	
+    	int rank = node.temp[0];
+    	if (done.contains(node))
+    	{
+    		return minRank;
+    	}
+
+    	done.add(node);
     	
     	System.out.println(
     			String.format("Bumping %s (%s) from %d to %d", 
     					graph.getModel().getValue(node.cell),
     					((mxCell)node.cell).getId(),
     					node.temp[0], node.temp[0]-1));
-    	
-    	int rank = node.temp[0];
-    	if (ranks.get(rank).size() == 1)
-    	{
-    		//We don't want to end up with an empty level
-    		return minRank;
-    	}
-    	ranks.get(rank).remove(node);
-    	
+
     	if (node instanceof mxGraphHierarchyNode)
     	{
+    		
 	    	for (mxGraphHierarchyEdge outgoingEdgeNode: ((mxGraphHierarchyNode)node).connectsAsSource)
 	    	{
-	    		if (outgoingEdgeNode.target.temp[0] == (rank-1))
+	    		if (outgoingEdgeNode.target.temp[0] <= rank)
 	    		{
-	    			minRank = bumpDownRank(ranks, minRank, outgoingEdgeNode.target);
+	    			minRank = bumpDownRank(ranks, minRank, outgoingEdgeNode.target, done);
 	    		}
 	    		else
 	    		{
@@ -711,6 +713,7 @@ public class BpmnAutoLayout {
 	    	}
     	}
     	
+    	ranks.get(rank).remove(node);
     	rank -= 1;
     	node.temp[0] = rank;
 		if (!ranks.containsKey(rank))
@@ -761,7 +764,7 @@ public class BpmnAutoLayout {
 					{
 						if ("Initiate Emergency\nResponse Plan".equals(graph.getModel().getValue(node.cell)))
 						{
-							minRank = bumpDownRank(ranks, minRank, node);
+							minRank = bumpDownRank(ranks, minRank, node, new HashSet<mxGraphHierarchyNode>());
 						}
 					}
 				}
