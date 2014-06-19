@@ -77,6 +77,7 @@ public class BpmnAutoLayout {
   protected Map<String, mxCell> elementParent;
   protected Set<Object> fakeEdges;
   protected int direction; 
+  protected boolean lanesAsGroups;
   
   public BpmnAutoLayout(BpmnModel bpmnModel) {
     this.bpmnModel = bpmnModel;
@@ -94,28 +95,33 @@ public class BpmnAutoLayout {
   }
 
   protected void layout(FlowElementsContainer flowElementsContainer) {
-	direction = SwingConstants.WEST;
+	direction = SwingConstants.NORTH;
+	lanesAsGroups = false;
+	
     graph = new mxGraph();
     cellParent = graph.getDefaultParent();
     graph.getModel().beginUpdate();
     
     List<mxCell> laneCells = new ArrayList<mxCell>();
     elementParent = new HashMap<String, mxCell>();
-    if (flowElementsContainer instanceof Process)
+    if (lanesAsGroups)
     {
-    	Process process = (Process)flowElementsContainer;
-    	int i = 0;
-    	for (Lane lane : process.getLanes()) 
-    	{
-    		mxCell swimLane = (mxCell)graph.insertVertex(
-    				cellParent, null, ++i, 0, 0, 0, 0, 
-    				"shape=swimlane;fontSize=9;fontStyle=1;startSize=20;horizontal=false;autosize=1;");
-    		laneCells.add(swimLane);
-    		for (String elementId : lane.getFlowReferences())
-    		{
-    			elementParent.put(elementId, swimLane);
-    		}
-    	}
+	    if (flowElementsContainer instanceof Process)
+	    {
+	    	Process process = (Process)flowElementsContainer;
+	    	int i = 0;
+	    	for (Lane lane : process.getLanes()) 
+	    	{
+	    		mxCell swimLane = (mxCell)graph.insertVertex(
+	    				cellParent, null, ++i, 0, 0, 0, 0, 
+	    				"shape=swimlane;fontSize=9;fontStyle=1;startSize=20;horizontal=false;autosize=1;");
+	    		laneCells.add(swimLane);
+	    		for (String elementId : lane.getFlowReferences())
+	    		{
+	    			elementParent.put(elementId, swimLane);
+	    		}
+	    	}
+	    }
     }
     
     handledFlowElements = new HashMap<String, FlowElement>();
@@ -249,8 +255,17 @@ public class BpmnAutoLayout {
   
   protected void handleBoundaryEvents() {
     for (BoundaryEvent boundaryEvent : boundaryEvents) {
-      mxGeometry geometry = new mxGeometry(0.8, 1.0, eventSize, eventSize);
-      geometry.setOffset(new mxPoint(-(eventSize/2), -(eventSize/2)));
+      mxGeometry geometry;
+	  if (direction == SwingConstants.NORTH)
+	  {
+		  geometry = new mxGeometry(1.0, 1.0, eventSize, eventSize);
+		  geometry.setOffset(new mxPoint(-(eventSize/3), -(eventSize/3)));		  
+	  }
+	  else
+	  {
+		  geometry = new mxGeometry(0.8, 1.0, eventSize, eventSize);
+		  geometry.setOffset(new mxPoint(-(eventSize/2), -(eventSize/2)));		  
+	  }
       geometry.setRelative(true);
       mxCell boundaryPort = new mxCell(null, geometry, "shape=ellipse;perimter=ellipsePerimeter");
       boundaryPort.setId("boundary-event-" + boundaryEvent.getId());
@@ -287,7 +302,8 @@ public class BpmnAutoLayout {
     	  
     	  // Sequence flow out of boundary events are handled in a different way,
 		  // to make them visually appealing for the eye of the dear end user.
-		  style = "edgeStyle=orthogonalEdgeStyle;entryX=0.5;entryY=1.0;exitX=0.5;exitY=1.0;";
+		  style = "edgeStyle=orthogonalEdgeStyle;";
+		  style += direction == SwingConstants.NORTH ? "" : "exitX=0.5;exitY=1.0;entryX=0.5;entryY=1.0;";
 		  //Insert a fake edge from the parent, so that the tree is held together:
 		  fakeEdges.add(graph.insertEdge(getCellParent(sequenceFlow), sequenceFlow.getId(), "", generatedVertices.get(e.getAttachedToRefId()), targertVertex, style));
       }
@@ -297,8 +313,8 @@ public class BpmnAutoLayout {
 		  int toLaneNr = (targertVertex.getParent().getValue() instanceof Integer) ? (Integer)targertVertex.getParent().getValue() : 0;
 		  if (fromLaneNr == toLaneNr)
 		  {
-			  style = "orthogonal=true;edgeStyle=elbowEdgeStyle";
-			  style += ";entryX=0;entryY=0.5;";
+			  style = direction == SwingConstants.NORTH ? "edgeStyle=orthogonalEdgeStyle;" : "orthogonal=true;edgeStyle=elbowEdgeStyle";
+			  style += direction == SwingConstants.NORTH ? "" : ";entryX=0;entryY=0.5;";
 		  }
 		  else if (fromLaneNr < toLaneNr)
 		  {
@@ -389,7 +405,7 @@ public class BpmnAutoLayout {
       // Visually, we'd like them to originate from one of the corners of the rhombus,
       // hence we force the starting point of the sequence flow to the closest rhombus corner point.
       FlowElement sourceElement = handledFlowElements.get(sequenceFlows.get(sequenceFlowId).getSourceRef()); 
-      if (sourceElement instanceof Gateway && ((Gateway) sourceElement).getOutgoingFlows().size() > 1) {
+      if (direction != SwingConstants.NORTH && sourceElement instanceof Gateway && ((Gateway) sourceElement).getOutgoingFlows().size() > 1) {
         mxPoint startPoint = points.get(0);
         Object gatewayVertex = generatedVertices.get(sourceElement.getId());
         mxCellState gatewayState = graph.getView().getState(gatewayVertex);
