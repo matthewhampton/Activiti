@@ -15,6 +15,7 @@ package org.activiti.bpmn;
 
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Hashtable;
@@ -378,6 +379,56 @@ public class BpmnAutoLayout {
 	  return dx*dx + dy*dy;
   }
   
+  protected List<mxPoint> getCircleLineIntersectionPoint(mxPoint pointA,
+          mxPoint pointB, mxPoint center, double radius) {
+      double baX = pointB.getX() - pointA.getX();
+      double baY = pointB.getY() - pointA.getY();
+      double caX = center.getX() - pointA.getX();
+      double caY = center.getY() - pointA.getY();
+
+      double a = baX * baX + baY * baY;
+      double bBy2 = baX * caX + baY * caY;
+      double c = caX * caX + caY * caY - radius * radius;
+
+      double pBy2 = bBy2 / a;
+      double q = c / a;
+
+      double disc = pBy2 * pBy2 - q;
+      if (disc < 0) {
+          return Collections.emptyList();
+      }
+      // if disc == 0 ... dealt with later
+      double tmpSqrt = Math.sqrt(disc);
+      double abScalingFactor1 = -pBy2 + tmpSqrt;
+      double abScalingFactor2 = -pBy2 - tmpSqrt;
+
+      mxPoint p1 = new mxPoint(pointA.getX() - baX * abScalingFactor1, pointA.getY()
+              - baY * abScalingFactor1);
+      if (disc == 0) { // abScalingFactor1 == abScalingFactor2
+          return Collections.singletonList(p1);
+      }
+      mxPoint p2 = new mxPoint(pointA.getX() - baX * abScalingFactor2, pointA.getY()
+              - baY * abScalingFactor2);
+      return Arrays.asList(p1, p2);
+  }
+  
+  protected boolean isOnLineSegment(mxPoint p, mxPoint a, mxPoint b)
+  {
+	  return isBetween(p.getX(), a.getX(), b.getX()) && isBetween(p.getY(), a.getY(), b.getY());
+  }
+  
+  protected boolean isBetween(double v, double va, double vb)
+  {
+	  if (Math.abs(va-vb)<0.01)
+	  {
+		  return Math.abs(va-v)<0.01;
+	  }
+	  else
+	  {
+		  return v <= Math.max(va,  vb) && v >= Math.min(va,  vb);
+	  }
+  }
+  
   protected void generateSequenceFlowDiagramInterchangeElements() {
     for (String sequenceFlowId : generatedEdges.keySet()) {
       Object edge = generatedEdges.get(sequenceFlowId);
@@ -398,7 +449,23 @@ public class BpmnAutoLayout {
     		  i++;
     	  }
     	  mxPoint last_in_circle = points.get(i-1);
-    	  new_points.add(new mxPoint(last_in_circle.getX(), last_in_circle.getY()));
+    	  mxPoint first_outside_circle = points.get(i);
+    	  List<mxPoint> l = getCircleLineIntersectionPoint(last_in_circle, first_outside_circle, startPoint, eventSize/2);
+    	  
+    	  //We're using orthogonal edges, so this line is either horizontal, or vertical:
+    	  for (mxPoint p : l)
+    	  {
+    		  if (isOnLineSegment(p, last_in_circle, first_outside_circle))
+    		  {
+    			  new_points.add(p);
+        		  break;
+    		  }
+    	  }
+    	  if (new_points.size() != 1)
+    	  {
+    		  throw new RuntimeException("Could not find an intersection of the edge and the boundary event");
+    	  }
+    	  
     	  while (i < points.size())
     	  {
     		  new_points.add(points.get(i));
