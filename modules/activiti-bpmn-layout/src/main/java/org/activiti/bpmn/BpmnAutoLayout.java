@@ -782,6 +782,66 @@ public class BpmnAutoLayout {
     	return lanes;
     }
     
+    private Map<Integer, Set<mxGraphHierarchyNode>> copyRanksAndRestoreTemp(Map<Integer, Set<mxGraphHierarchyNode>> ranks)
+    {
+    	Map<Integer, Set<mxGraphHierarchyNode>> newRanks = new HashMap<Integer, Set<mxGraphHierarchyNode>>();
+		for (Map.Entry<Integer, Set<mxGraphHierarchyNode>> e : ranks.entrySet())
+		{
+			newRanks.put(e.getKey(), new HashSet<mxGraphHierarchyNode>(e.getValue()));
+			for (mxGraphHierarchyNode node : e.getValue())
+			{
+				node.temp[0] = e.getKey();
+			}
+		}
+		return newRanks;
+    }
+        
+    private Object[] ensureOneLanePerRank(Map<Integer, Set<mxGraphHierarchyNode>> ranks, int minRank, int i)
+    {
+    	if (i < minRank)
+    	{
+    		return new Object[] {ranks, minRank};
+    	}
+    	Map<Lane, Set<mxGraphHierarchyNode>> laneNodeMap;
+		if ((laneNodeMap = getUserTaskLanesOfNodes(ranks.get(i))).size() > 1)
+		{
+			Map<Integer, Set<mxGraphHierarchyNode>> bestNewRanks = null;
+			int bestNewMinRank = -1;
+			
+			for (Lane lane: laneNodeMap.keySet())
+			{
+				Map<mxGraphHierarchyNode, Integer> targetRanks = new HashMap<mxGraphHierarchyNode, Integer>();
+				for (Lane other_lane: laneNodeMap.keySet())
+				{
+					if (lane != other_lane)
+					{
+						for (mxGraphHierarchyNode node : laneNodeMap.get(other_lane))
+						{
+							calculateBumpedDownTargetRank(node, targetRanks, node.temp[0]);
+						}
+					}
+				}
+				Map<Integer, Set<mxGraphHierarchyNode>> newRanks = copyRanksAndRestoreTemp(ranks);
+				int newMinRank = bumpDownRank(newRanks, minRank, targetRanks);
+				Object[] r = ensureOneLanePerRank(newRanks, newMinRank, i-1);
+				newRanks = (Map<Integer, Set<mxGraphHierarchyNode>>)r[0];
+				newMinRank = (Integer)r[1];
+				
+				if (bestNewRanks == null)
+				{
+					bestNewRanks = newRanks;
+					bestNewMinRank = newMinRank;
+				}
+			}
+			return new Object[] {bestNewRanks, bestNewMinRank};
+		}
+		else
+		{
+			return ensureOneLanePerRank(ranks, minRank, i-1);
+		}
+		
+    }
+    
 	public void layeringStage()
 	{
 		model.initialRank();
@@ -789,30 +849,9 @@ public class BpmnAutoLayout {
 		Map<Integer, Set<mxGraphHierarchyNode>> ranks = getCellsByRank();
 		
 		int minRank = 0;
-		int c = 0;
-		for (int i=model.maxRank; i >= minRank; i--)
-		{
-			Map<Lane, Set<mxGraphHierarchyNode>> laneNodeMap;
-			while ((laneNodeMap = getUserTaskLanesOfNodes(ranks.get(i))).size() > 1)
-			{
-				Map<mxGraphHierarchyNode, Integer> bestTargetRanks = null;	
-				
-				for (Set<mxGraphHierarchyNode> nodes: laneNodeMap.values())
-				{
-					Map<mxGraphHierarchyNode, Integer> targetRank = new HashMap<mxGraphHierarchyNode, Integer>();
-					for (mxGraphHierarchyNode node : nodes)
-					{
-						calculateBumpedDownTargetRank(node, targetRank, node.temp[0]);
-					}
-					if (bestTargetRanks == null || bestTargetRanks.size() > targetRank.size())
-					{
-						bestTargetRanks = targetRank;
-					}
-				}
-
-				minRank = bumpDownRank(ranks, minRank, bestTargetRanks);
-			}
-		}
+		Object [] r = ensureOneLanePerRank(ranks, minRank, model.maxRank);
+		ranks = (Map<Integer, Set<mxGraphHierarchyNode>>)r[0];
+		minRank = (Integer)r[1];
 		
 		if (minRank < 0)
 		{
