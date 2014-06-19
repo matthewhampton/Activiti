@@ -149,7 +149,6 @@ public class BpmnAutoLayout {
     
     // Process all elements
     for (FlowElement flowElement : flowElementsContainer.getFlowElements()) {
-      
       if (flowElement instanceof SequenceFlow) {
         handleSequenceFlow((SequenceFlow) flowElement);
       } else if (flowElement instanceof Event) {
@@ -708,10 +707,6 @@ public class BpmnAutoLayout {
 	    		{
 	    			calculateBumpedDownTargetRank(outgoingEdgeNode.target, targetRank, ensureLessThan-1);
 	    		}
-	    		else
-	    		{
-	    			System.out.println(outgoingEdgeNode.target.temp[0]);
-	    		}
 	    	}
     	}
     }
@@ -766,7 +761,7 @@ public class BpmnAutoLayout {
     	for (mxGraphHierarchyNode node: nodes)
     	{
     		FlowElement e = BpmnAutoLayout.this.handledFlowElements.get(((mxCell)node.cell).getId());
-    		if (e != null && e instanceof UserTask)
+    		if (e != null)
     		{
 	    		Lane l = BpmnAutoLayout.this.elementLane.get(e.getId());
 	    		if (l != null )
@@ -794,6 +789,17 @@ public class BpmnAutoLayout {
 			}
 		}
 		return newRanks;
+    }
+    
+    private void restoreTemp(Map<Integer, Set<mxGraphHierarchyNode>> ranks)
+    {
+		for (Map.Entry<Integer, Set<mxGraphHierarchyNode>> e : ranks.entrySet())
+		{
+			for (mxGraphHierarchyNode node : e.getValue())
+			{
+				node.temp[0] = e.getKey();
+			}
+		}
     }
     
     private int getRanksScore(Map<Integer, Set<mxGraphHierarchyNode>> ranks, int minRank)
@@ -862,6 +868,7 @@ public class BpmnAutoLayout {
 					bestNewMinRank = newMinRank;
 				}
 			}
+			restoreTemp(bestNewRanks);
 			return new Object[] {bestNewRanks, bestNewMinRank};
 		}
 		else
@@ -876,6 +883,7 @@ public class BpmnAutoLayout {
 		model.initialRank();
 
 		Map<Integer, Set<mxGraphHierarchyNode>> ranks = getCellsByRank();
+		
 		
 		int minRank = 0;
 		Object [] r = ensureOneLanePerRank(ranks, minRank, model.maxRank);
