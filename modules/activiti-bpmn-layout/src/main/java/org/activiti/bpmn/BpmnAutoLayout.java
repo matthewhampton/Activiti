@@ -40,6 +40,7 @@ import org.activiti.bpmn.model.SequenceFlow;
 import org.activiti.bpmn.model.StartEvent;
 import org.activiti.bpmn.model.SubProcess;
 import org.activiti.bpmn.model.Task;
+import org.apache.commons.lang3.text.WordUtils;
 
 import com.mxgraph.layout.hierarchical.mxHierarchicalLayout;
 import com.mxgraph.model.mxCell;
@@ -239,7 +240,13 @@ public class BpmnAutoLayout {
   }
   
   protected void handleActivity(FlowElement flowElement) {
-    Object activityVertex = graph.insertVertex(getCellParent(flowElement), flowElement.getId(), "", 0, 0, taskWidth, taskHeight, "");
+    String wrapped = WordUtils.wrap(flowElement.getName(), 22, System.getProperty("line.separator"), true);
+    int lines = wrapped.split(System.getProperty("line.separator")).length;
+    String topbottom = (lines > 1 ? "10" : "20");
+    String leftright = "20";
+    Object activityVertex = graph.insertVertex(getCellParent(flowElement), flowElement.getId(), 
+    		wrapped, 0, 0, taskWidth, taskHeight, String.format("spacingLeft=%s;spacingRight=%s;spacingTop=%s;spacingBottom=%s", leftright, leftright, topbottom, topbottom) );
+    graph.updateCellSize(activityVertex);
     generatedVertices.put(flowElement.getId(), activityVertex);
   }
   
