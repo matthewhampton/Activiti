@@ -43,6 +43,9 @@ import org.activiti.bpmn.model.Task;
 import org.apache.commons.lang3.text.WordUtils;
 
 import com.mxgraph.layout.hierarchical.mxHierarchicalLayout;
+import com.mxgraph.layout.hierarchical.model.mxGraphAbstractHierarchyCell;
+import com.mxgraph.layout.hierarchical.model.mxGraphHierarchyEdge;
+import com.mxgraph.layout.hierarchical.model.mxGraphHierarchyNode;
 import com.mxgraph.model.mxCell;
 import com.mxgraph.model.mxGeometry;
 import com.mxgraph.model.mxIGraphModel;
@@ -77,6 +80,7 @@ public class BpmnAutoLayout {
   protected Map<String, Object> generatedVertices;
   protected Map<String, Object> generatedEdges;
   protected Map<String, mxCell> elementParent;
+  protected Map<String, Lane> elementLane;
   protected Set<Object> fakeEdges;
   protected int direction; 
   protected boolean lanesAsGroups;
@@ -106,24 +110,30 @@ public class BpmnAutoLayout {
     
     List<mxCell> laneCells = new ArrayList<mxCell>();
     elementParent = new HashMap<String, mxCell>();
-    if (lanesAsGroups)
+    elementLane = new HashMap<String, Lane>();
+    if (flowElementsContainer instanceof Process)
     {
-	    if (flowElementsContainer instanceof Process)
-	    {
-	    	Process process = (Process)flowElementsContainer;
-	    	int i = 0;
-	    	for (Lane lane : process.getLanes()) 
-	    	{
-	    		mxCell swimLane = (mxCell)graph.insertVertex(
+    	Process process = (Process)flowElementsContainer;
+    	int i = 0;
+    	for (Lane lane : process.getLanes()) 
+    	{
+    		mxCell swimLane = null;
+    	    if (lanesAsGroups)
+    	    {
+	    		swimLane = (mxCell)graph.insertVertex(
 	    				cellParent, null, ++i, 0, 0, 0, 0, 
 	    				"shape=swimlane;fontSize=9;fontStyle=1;startSize=20;horizontal=false;autosize=1;");
 	    		laneCells.add(swimLane);
-	    		for (String elementId : lane.getFlowReferences())
-	    		{
-	    			elementParent.put(elementId, swimLane);
-	    		}
-	    	}
-	    }
+    	    }
+    		for (String elementId : lane.getFlowReferences())
+    		{
+    		    if (lanesAsGroups)
+    		    {
+    		    	elementParent.put(elementId, swimLane);
+    		    }
+    		    elementLane.put(elementId, lane);
+    		}
+    	}
     }
     
     handledFlowElements = new HashMap<String, FlowElement>();
@@ -172,36 +182,35 @@ public class BpmnAutoLayout {
     layout.setDisableEdgeStyle(false);
     layout.setUseBoundingBox(true);
     
-    for (mxCell swimLaneCell : laneCells)
+    if (lanesAsGroups)
     {
-    	boolean done = false;
-    	while (!done)
-    	{
-    		layout.execute(swimLaneCell);
-    		if (layout.getRoots().size() > 1)
-    		{
-    			List<Object> roots = new ArrayList<Object>(layout.getRoots());
-    			Object v = graph.insertVertex(swimLaneCell, null, null, 0, 0, 1, 1);
-    			fakeVertices.add(v);
-    			for (Object r: roots	)
-    			{
-	    			fakeEdges.add(graph.insertEdge(
-	    					swimLaneCell, 
-	    					null, null, 
-	    					v, r));
-    			}
-    		}
-    		else
-    		{
-    			done = true;
-    		}
-    	}
-    	
-    	
-    }
-    if (laneCells.size() > 0)
-    {
-    	layout.execute(graph.getDefaultParent(), Arrays.asList(laneCells.toArray()));
+	    for (mxCell swimLaneCell : laneCells)
+	    {
+	    	boolean done = false;
+	    	while (!done)
+	    	{
+	    		layout.execute(swimLaneCell);
+	    		if (layout.getRoots().size() > 1)
+	    		{
+	    			List<Object> roots = new ArrayList<Object>(layout.getRoots());
+	    			Object v = graph.insertVertex(swimLaneCell, null, null, 0, 0, 1, 1);
+	    			fakeVertices.add(v);
+	    			for (Object r: roots	)
+	    			{
+		    			fakeEdges.add(graph.insertEdge(
+		    					swimLaneCell, 
+		    					null, null, 
+		    					v, r));
+	    			}
+	    		}
+	    		else
+	    		{
+	    			done = true;
+	    		}
+	    	}
+	    }
+
+	    layout.execute(graph.getDefaultParent(), Arrays.asList(laneCells.toArray()));
     }
     else
     {
@@ -659,13 +668,122 @@ public class BpmnAutoLayout {
     
     public CustomLayout(mxGraph graph, int orientation) {
       super(graph, orientation);
-      this.traverseAncestors = false;
+      //this.traverseAncestors = false;
     }
     
     public List<Object> getRoots()
     {
     	return roots;
     }
+    
+    protected int bumpDownRank(
+    		Map<Integer, Set<mxGraphHierarchyNode>> ranks, 
+    		int minRank,
+    		mxGraphHierarchyNode node)
+    {
+    	
+    	System.out.println(
+    			String.format("Bumping %s (%s) from %d to %d", 
+    					graph.getModel().getValue(node.cell),
+    					((mxCell)node.cell).getId(),
+    					node.temp[0], node.temp[0]-1));
+    	
+    	int rank = node.temp[0];
+    	if (ranks.get(rank).size() == 1)
+    	{
+    		//We don't want to end up with an empty level
+    		return minRank;
+    	}
+    	ranks.get(rank).remove(node);
+    	
+    	if (node instanceof mxGraphHierarchyNode)
+    	{
+	    	for (mxGraphHierarchyEdge outgoingEdgeNode: ((mxGraphHierarchyNode)node).connectsAsSource)
+	    	{
+	    		if (outgoingEdgeNode.target.temp[0] == (rank-1))
+	    		{
+	    			minRank = bumpDownRank(ranks, minRank, outgoingEdgeNode.target);
+	    		}
+	    		else
+	    		{
+	    			System.out.println(outgoingEdgeNode.target.temp[0]);
+	    		}
+	    	}
+    	}
+    	
+    	rank -= 1;
+    	node.temp[0] = rank;
+		if (!ranks.containsKey(rank))
+		{
+			ranks.put(rank, new HashSet<mxGraphHierarchyNode>());
+		}
+		ranks.get(rank).add(node);		
+    	
+    	
+    	return Math.min(minRank, node.temp[0]);
+    }
+    
+    private Map<Integer, Set<mxGraphHierarchyNode>> getCellsByRank()
+    {
+    	Map<Integer, Set<mxGraphHierarchyNode>> ranks = new HashMap<Integer, Set<mxGraphHierarchyNode>>();
+		for (Map.Entry<Object, mxGraphHierarchyNode> e : model.getVertexMapper().entrySet())
+		{
+			int rank = e.getValue().temp[0];
+			if (!ranks.containsKey(rank))
+			{
+				ranks.put(rank, new HashSet<mxGraphHierarchyNode>());
+			}
+			ranks.get(rank).add(e.getValue());			
+		}
+		return ranks;
+    }
+    
+	public void layeringStage()
+	{
+		model.initialRank();
+
+		Map<Integer, Set<mxGraphHierarchyNode>> ranks = getCellsByRank();
+		for (int i=model.maxRank; i >= 0; i--)
+		{
+			System.out.println(String.format("At rank %d there are %d nodes", i, ranks.get(i).size()));
+		}
+		
+		int minRank = 0;
+		int c = 0;
+		for (int i=model.maxRank; i >= minRank; i--)
+		{
+			
+			if (ranks.get(i).size()>=3)
+			{
+				if (c == 1)
+				{
+					for (mxGraphHierarchyNode node : new ArrayList<mxGraphHierarchyNode>(ranks.get(i)))
+					{
+						if ("Initiate Emergency\nResponse Plan".equals(graph.getModel().getValue(node.cell)))
+						{
+							minRank = bumpDownRank(ranks, minRank, node);
+						}
+					}
+				}
+				c+=1;
+			}
+		}
+		if (minRank < 0)
+		{
+			for (Map.Entry<Object, mxGraphHierarchyNode> e : model.getVertexMapper().entrySet())
+			{
+				e.getValue().temp[0] -= minRank;
+				model.maxRank = Math.max(model.maxRank, e.getValue().temp[0]);
+			}
+		}
+		
+		ranks = getCellsByRank();
+		for (int i=model.maxRank; i >= 0; i--)
+		{
+			System.out.println(String.format("At rank %d there are %d nodes", i, ranks.get(i).size()));
+		}
+		model.fixRanks();
+	}
     
   }
   
