@@ -40,6 +40,7 @@ import org.activiti.bpmn.model.SequenceFlow;
 import org.activiti.bpmn.model.StartEvent;
 import org.activiti.bpmn.model.SubProcess;
 import org.activiti.bpmn.model.Task;
+import org.activiti.bpmn.model.UserTask;
 import org.apache.commons.lang3.text.WordUtils;
 
 import com.mxgraph.layout.hierarchical.mxHierarchicalLayout;
@@ -664,7 +665,7 @@ public class BpmnAutoLayout {
   // We must extend the default hierarchical layout to tweak it a bit (see url link) otherwise the layouting crashes.
   //
   // Verify again with a later release if fixed (ie the mxHierarchicalLayout can be used directly)
-  static class CustomLayout extends mxHierarchicalLayout {
+  class CustomLayout extends mxHierarchicalLayout {
     
     public CustomLayout(mxGraph graph, int orientation) {
       super(graph, orientation);
@@ -676,7 +677,7 @@ public class BpmnAutoLayout {
     	return roots;
     }
     
-    protected void calculateBumpdeDownTargetRank(
+    protected void calculateBumpedDownTargetRank(
     		mxGraphHierarchyNode node,
     		Map<mxGraphHierarchyNode, Integer> targetRank,
     		int ensureLessThan)
@@ -705,7 +706,7 @@ public class BpmnAutoLayout {
 	    	{
 	    		if (outgoingEdgeNode.target.temp[0] < node.temp[0])
 	    		{
-	    			calculateBumpdeDownTargetRank(outgoingEdgeNode.target, targetRank, ensureLessThan-1);
+	    			calculateBumpedDownTargetRank(outgoingEdgeNode.target, targetRank, ensureLessThan-1);
 	    		}
 	    		else
 	    		{
@@ -759,6 +760,28 @@ public class BpmnAutoLayout {
 		return ranks;
     }
     
+    private Map<Lane, Set<mxGraphHierarchyNode>> getUserTaskLanesOfNodes(Set<mxGraphHierarchyNode> nodes)
+    {
+    	Map<Lane, Set<mxGraphHierarchyNode>> lanes = new HashMap<Lane, Set<mxGraphHierarchyNode>>();
+    	for (mxGraphHierarchyNode node: nodes)
+    	{
+    		FlowElement e = BpmnAutoLayout.this.handledFlowElements.get(((mxCell)node.cell).getId());
+    		if (e != null && e instanceof UserTask)
+    		{
+	    		Lane l = BpmnAutoLayout.this.elementLane.get(e.getId());
+	    		if (l != null )
+	    		{
+		    		if (!lanes.containsKey(l))
+		    		{
+		    			lanes.put(l,new HashSet<mxGraphHierarchyNode>());
+		    		}
+		    		lanes.get(l).add(node);
+	    		}
+    		}
+    	}
+    	return lanes;
+    }
+    
 	public void layeringStage()
 	{
 		model.initialRank();
@@ -769,22 +792,25 @@ public class BpmnAutoLayout {
 		int c = 0;
 		for (int i=model.maxRank; i >= minRank; i--)
 		{
-			
-			if (ranks.get(i).size()>=3)
+			Map<Lane, Set<mxGraphHierarchyNode>> laneNodeMap;
+			while ((laneNodeMap = getUserTaskLanesOfNodes(ranks.get(i))).size() > 1)
 			{
-				if (c == 1)
+				Map<mxGraphHierarchyNode, Integer> bestTargetRanks = null;	
+				
+				for (Set<mxGraphHierarchyNode> nodes: laneNodeMap.values())
 				{
-					for (mxGraphHierarchyNode node : new ArrayList<mxGraphHierarchyNode>(ranks.get(i)))
+					Map<mxGraphHierarchyNode, Integer> targetRank = new HashMap<mxGraphHierarchyNode, Integer>();
+					for (mxGraphHierarchyNode node : nodes)
 					{
-						if ("Initiate Emergency\nResponse Plan".equals(graph.getModel().getValue(node.cell)))
-						{
-							Map<mxGraphHierarchyNode, Integer> targetRank = new HashMap<mxGraphHierarchyNode, Integer>();
-							calculateBumpdeDownTargetRank(node, targetRank, node.temp[0]);
-							minRank = bumpDownRank(ranks, minRank, targetRank);
-						}
+						calculateBumpedDownTargetRank(node, targetRank, node.temp[0]);
+					}
+					if (bestTargetRanks == null || bestTargetRanks.size() > targetRank.size())
+					{
+						bestTargetRanks = targetRank;
 					}
 				}
-				c+=1;
+
+				minRank = bumpDownRank(ranks, minRank, bestTargetRanks);
 			}
 		}
 		
