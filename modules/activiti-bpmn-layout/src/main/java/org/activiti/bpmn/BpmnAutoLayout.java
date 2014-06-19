@@ -254,61 +254,35 @@ public class BpmnAutoLayout {
   }
   
   protected void handleBoundaryEvents() {
-    for (BoundaryEvent boundaryEvent : boundaryEvents) {
-      mxGeometry geometry;
-	  if (direction == SwingConstants.NORTH)
-	  {
-		  geometry = new mxGeometry(1.0, 1.0, eventSize, eventSize);
-		  geometry.setOffset(new mxPoint(-(eventSize/3), -(eventSize/3)));		  
-	  }
-	  else
-	  {
-		  geometry = new mxGeometry(0.8, 1.0, eventSize, eventSize);
-		  geometry.setOffset(new mxPoint(-(eventSize/2), -(eventSize/2)));		  
-	  }
-      geometry.setRelative(true);
-      mxCell boundaryPort = new mxCell(null, geometry, "shape=ellipse;perimter=ellipsePerimeter");
-      boundaryPort.setId("boundary-event-" + boundaryEvent.getId());
-      boundaryPort.setVertex(true);
-
-      Object portParent = null;
-      if (boundaryEvent.getAttachedToRefId() != null) {
-        portParent = generatedVertices.get(boundaryEvent.getAttachedToRefId());
-      } else if (boundaryEvent.getAttachedToRef() != null) {
-        portParent = generatedVertices.get(boundaryEvent.getAttachedToRef().getId());
-      } else {
-        throw new RuntimeException("Could not generate DI: boundaryEvent '" + boundaryEvent.getId() + "' has no attachedToRef");
-      }
-      if (portParent == null)
-      {
-    	  throw new RuntimeException("Could not generate DI: boundaryEvent '" + boundaryEvent.getId() + "' has no matching attachedToRef");
-      }
-      graph.addCell(boundaryPort, portParent);
-      generatedVertices.put(boundaryEvent.getId(), boundaryPort);
-    }
   }
   
   protected void handleSequenceFlow() {
         
     for (SequenceFlow sequenceFlow : sequenceFlows.values()) {
-      mxCell sourceVertex = (mxCell)generatedVertices.get(sequenceFlow.getSourceRef());
+      mxCell sourceVertex;
       mxCell targertVertex = (mxCell)generatedVertices.get(sequenceFlow.getTargetRef());
-      
-      String style = null;
+      String style;
        
       if (handledFlowElements.get(sequenceFlow.getSourceRef()) instanceof BoundaryEvent) 
       {
-    	  BoundaryEvent e = (BoundaryEvent)handledFlowElements.get(sequenceFlow.getSourceRef());
+    	  BoundaryEvent boundaryEvent = (BoundaryEvent)handledFlowElements.get(sequenceFlow.getSourceRef());
+          Object portParent = null;
+          if (boundaryEvent.getAttachedToRefId() != null) {
+        	  sourceVertex = (mxCell)generatedVertices.get(boundaryEvent.getAttachedToRefId());
+          } else if (boundaryEvent.getAttachedToRef() != null) {
+        	  sourceVertex = (mxCell)generatedVertices.get(boundaryEvent.getAttachedToRef().getId());
+          } else {
+            throw new RuntimeException("Could not generate DI: boundaryEvent '" + boundaryEvent.getId() + "' has no attachedToRef");
+          }
     	  
     	  // Sequence flow out of boundary events are handled in a different way,
 		  // to make them visually appealing for the eye of the dear end user.
 		  style = "edgeStyle=orthogonalEdgeStyle;";
 		  style += direction == SwingConstants.NORTH ? "" : "exitX=0.5;exitY=1.0;entryX=0.5;entryY=1.0;";
-		  //Insert a fake edge from the parent, so that the tree is held together:
-		  fakeEdges.add(graph.insertEdge(getCellParent(sequenceFlow), sequenceFlow.getId(), "", generatedVertices.get(e.getAttachedToRefId()), targertVertex, style));
       }
       else
       {
+    	  sourceVertex = (mxCell)generatedVertices.get(sequenceFlow.getSourceRef());
 		  int fromLaneNr = (sourceVertex.getParent().getValue() instanceof Integer) ? (Integer)sourceVertex.getParent().getValue() : 0;
 		  int toLaneNr = (targertVertex.getParent().getValue() instanceof Integer) ? (Integer)targertVertex.getParent().getValue() : 0;
 		  if (fromLaneNr == toLaneNr)
@@ -396,16 +370,46 @@ public class BpmnAutoLayout {
     }
   }
 
+  private double distanceSquared(mxPoint a, mxPoint b)
+  {
+	  double dx = a.getX()-b.getX();
+	  double dy = a.getY()-b.getY();
+	  
+	  return dx*dx + dy*dy;
+  }
+  
   protected void generateSequenceFlowDiagramInterchangeElements() {
     for (String sequenceFlowId : generatedEdges.keySet()) {
       Object edge = generatedEdges.get(sequenceFlowId);
       List<mxPoint> points = graph.getView().getState(edge).getAbsolutePoints();
       
-      // JGraphX has this funny way of generating the outgoing sequence flow of a gateway
-      // Visually, we'd like them to originate from one of the corners of the rhombus,
-      // hence we force the starting point of the sequence flow to the closest rhombus corner point.
       FlowElement sourceElement = handledFlowElements.get(sequenceFlows.get(sequenceFlowId).getSourceRef()); 
+      if (sourceElement instanceof BoundaryEvent) 
+      {
+    	  BoundaryEvent boundaryEvent = (BoundaryEvent)sourceElement;
+    	  mxPoint startPoint = points.get(0);
+          //First we put the boundary event on the boundary of the activity, at the point that the edge begins:
+    	  createDiagramInterchangeInformation(boundaryEvent, (int)startPoint.getX()-(eventSize/2), (int)startPoint.getY()-(eventSize/2), eventSize, eventSize);
+    	  //Now we move the start of the edge to the edge of the boundary event
+    	  List<mxPoint> new_points = new ArrayList<mxPoint>();
+    	  int i = 0;
+    	  while (i < (points.size()-1) && (distanceSquared(startPoint, points.get(i)) < eventSize*eventSize))
+    	  {
+    		  i++;
+    	  }
+    	  mxPoint last_in_circle = points.get(i-1);
+    	  new_points.add(new mxPoint(last_in_circle.getX(), last_in_circle.getY()));
+    	  while (i < points.size())
+    	  {
+    		  new_points.add(points.get(i));
+    		  i++;
+    	  }
+    	  points = new_points;
+      }
       if (direction != SwingConstants.NORTH && sourceElement instanceof Gateway && ((Gateway) sourceElement).getOutgoingFlows().size() > 1) {
+        // JGraphX has this funny way of generating the outgoing sequence flow of a gateway
+        // Visually, we'd like them to originate from one of the corners of the rhombus,
+        // hence we force the starting point of the sequence flow to the closest rhombus corner point.
         mxPoint startPoint = points.get(0);
         Object gatewayVertex = generatedVertices.get(sourceElement.getId());
         mxCellState gatewayState = graph.getView().getState(gatewayVertex);
