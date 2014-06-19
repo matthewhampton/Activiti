@@ -676,35 +676,36 @@ public class BpmnAutoLayout {
     	return roots;
     }
     
-    protected int bumpDownRank(
-    		Map<Integer, Set<mxGraphHierarchyNode>> ranks, 
-    		int minRank,
+    protected void calculateBumpdeDownTargetRank(
     		mxGraphHierarchyNode node,
-    		Set<mxGraphHierarchyNode> done)
+    		Map<mxGraphHierarchyNode, Integer> targetRank,
+    		int ensureLessThan)
     {
-    	    	
-    	int rank = node.temp[0];
-    	if (done.contains(node))
+
+    	if (node.temp[0] < ensureLessThan)
     	{
-    		return minRank;
+    		return;
+    	}
+    	
+    	if (targetRank.containsKey(node))
+    	{
+    		if (targetRank.get(node) < ensureLessThan)
+    		{
+    			return;
+    		}
     	}
 
-    	done.add(node);
+    	targetRank.put(node, ensureLessThan-1);
     	
-    	System.out.println(
-    			String.format("Bumping %s (%s) from %d to %d", 
-    					graph.getModel().getValue(node.cell),
-    					((mxCell)node.cell).getId(),
-    					node.temp[0], node.temp[0]-1));
 
     	if (node instanceof mxGraphHierarchyNode)
     	{
     		
 	    	for (mxGraphHierarchyEdge outgoingEdgeNode: ((mxGraphHierarchyNode)node).connectsAsSource)
 	    	{
-	    		if (outgoingEdgeNode.target.temp[0] <= rank)
+	    		if (outgoingEdgeNode.target.temp[0] < node.temp[0])
 	    		{
-	    			minRank = bumpDownRank(ranks, minRank, outgoingEdgeNode.target, done);
+	    			calculateBumpdeDownTargetRank(outgoingEdgeNode.target, targetRank, ensureLessThan-1);
 	    		}
 	    		else
 	    		{
@@ -712,18 +713,35 @@ public class BpmnAutoLayout {
 	    		}
 	    	}
     	}
+    }
     	
-    	ranks.get(rank).remove(node);
-    	rank -= 1;
-    	node.temp[0] = rank;
-		if (!ranks.containsKey(rank))
-		{
-			ranks.put(rank, new HashSet<mxGraphHierarchyNode>());
-		}
-		ranks.get(rank).add(node);		
+    protected int bumpDownRank(
+		Map<Integer, Set<mxGraphHierarchyNode>> ranks, 
+		int minRank,
+		Map<mxGraphHierarchyNode, Integer> targetRank)
+    {
+    	for (Map.Entry<mxGraphHierarchyNode, Integer> e : targetRank.entrySet())
+    	{
+    		mxGraphHierarchyNode node = e.getKey();
+    		int rank = e.getValue();
+    		
+//	    	System.out.println(
+//	    			String.format("Bumping %s (%s) from %d to %d", 
+//	    					graph.getModel().getValue(node.cell),
+//	    					((mxCell)node.cell).getId(),
+//	    					node.temp[0], rank));
+	
+	    	ranks.get(node.temp[0]).remove(node);
+	    	node.temp[0] = rank;
+			if (!ranks.containsKey(rank))
+			{
+				ranks.put(rank, new HashSet<mxGraphHierarchyNode>());
+			}
+			ranks.get(rank).add(node);
+			minRank = Math.min(minRank, node.temp[0]);
+    	}
     	
-    	
-    	return Math.min(minRank, node.temp[0]);
+    	return minRank;
     }
     
     private Map<Integer, Set<mxGraphHierarchyNode>> getCellsByRank()
@@ -746,10 +764,6 @@ public class BpmnAutoLayout {
 		model.initialRank();
 
 		Map<Integer, Set<mxGraphHierarchyNode>> ranks = getCellsByRank();
-		for (int i=model.maxRank; i >= 0; i--)
-		{
-			System.out.println(String.format("At rank %d there are %d nodes", i, ranks.get(i).size()));
-		}
 		
 		int minRank = 0;
 		int c = 0;
@@ -764,13 +778,16 @@ public class BpmnAutoLayout {
 					{
 						if ("Initiate Emergency\nResponse Plan".equals(graph.getModel().getValue(node.cell)))
 						{
-							minRank = bumpDownRank(ranks, minRank, node, new HashSet<mxGraphHierarchyNode>());
+							Map<mxGraphHierarchyNode, Integer> targetRank = new HashMap<mxGraphHierarchyNode, Integer>();
+							calculateBumpdeDownTargetRank(node, targetRank, node.temp[0]);
+							minRank = bumpDownRank(ranks, minRank, targetRank);
 						}
 					}
 				}
 				c+=1;
 			}
 		}
+		
 		if (minRank < 0)
 		{
 			for (Map.Entry<Object, mxGraphHierarchyNode> e : model.getVertexMapper().entrySet())
@@ -779,12 +796,12 @@ public class BpmnAutoLayout {
 				model.maxRank = Math.max(model.maxRank, e.getValue().temp[0]);
 			}
 		}
-		
-		ranks = getCellsByRank();
-		for (int i=model.maxRank; i >= 0; i--)
-		{
-			System.out.println(String.format("At rank %d there are %d nodes", i, ranks.get(i).size()));
-		}
+//		
+//		ranks = getCellsByRank();
+//		for (int i=model.maxRank; i >= 0; i--)
+//		{
+//			System.out.println(String.format("At rank %d there are %d nodes", i, ranks.get(i).size()));
+//		}
 		model.fixRanks();
 	}
     
