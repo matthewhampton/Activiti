@@ -795,6 +795,33 @@ public class BpmnAutoLayout {
 		}
 		return newRanks;
     }
+    
+    private int getRanksScore(Map<Integer, Set<mxGraphHierarchyNode>> ranks, int minRank)
+    {
+    	int countLaneChanges = 0;
+    	
+    	Lane currentLane = null;
+    	for (int i=model.maxRank; i>=minRank; i--)
+    	{
+    		
+    		Map<Lane, Set<mxGraphHierarchyNode>> laneNodeMap = getUserTaskLanesOfNodes(ranks.get(i));
+    		if (laneNodeMap.size() > 1)
+    		{
+    			throw new RuntimeException("Ambiguous lane for rank");
+    		}
+    		if (laneNodeMap.size() == 1)
+    		{
+    			Lane nextLane = laneNodeMap.keySet().iterator().next();
+    			if (currentLane != null && nextLane != currentLane)
+    			{
+    				countLaneChanges += 1;
+    			}
+				currentLane = nextLane;
+    		}
+    		
+		}
+		return -countLaneChanges;
+    }
         
     private Object[] ensureOneLanePerRank(Map<Integer, Set<mxGraphHierarchyNode>> ranks, int minRank, int i)
     {
@@ -807,6 +834,7 @@ public class BpmnAutoLayout {
 		{
 			Map<Integer, Set<mxGraphHierarchyNode>> bestNewRanks = null;
 			int bestNewMinRank = -1;
+			int bestRanksScore = -1;
 			
 			for (Lane lane: laneNodeMap.keySet())
 			{
@@ -826,9 +854,10 @@ public class BpmnAutoLayout {
 				Object[] r = ensureOneLanePerRank(newRanks, newMinRank, i-1);
 				newRanks = (Map<Integer, Set<mxGraphHierarchyNode>>)r[0];
 				newMinRank = (Integer)r[1];
-				
-				if (bestNewRanks == null)
+				int score = getRanksScore(newRanks, newMinRank);
+				if (bestNewRanks == null || bestRanksScore < score)
 				{
+					bestRanksScore = score;
 					bestNewRanks = newRanks;
 					bestNewMinRank = newMinRank;
 				}
