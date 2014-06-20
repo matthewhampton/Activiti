@@ -20,6 +20,7 @@ import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Hashtable;
 import java.util.List;
+import java.util.ListIterator;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
@@ -890,6 +891,62 @@ public class BpmnAutoLayout {
 		ranks = (Map<Integer, Set<mxGraphHierarchyNode>>)r[0];
 		minRank = (Integer)r[1];
 		
+		Set<Lane> done = new HashSet<Lane>();
+		Lane currentLane = null;
+		Lane replacementLane = null;
+    	for (int i=model.maxRank; i>=minRank; i--)
+    	{
+    		
+    		Map<Lane, Set<mxGraphHierarchyNode>> laneNodeMap = getUserTaskLanesOfNodes(ranks.get(i));
+    		if (laneNodeMap.size() > 1)
+    		{
+    			throw new RuntimeException("Ambiguous lane for rank");
+    		}
+    		if (laneNodeMap.size() == 1)
+    		{
+    			Lane nextLane = laneNodeMap.keySet().iterator().next();
+    			if (currentLane != null && nextLane != currentLane)
+    			{
+    				if (done.contains(nextLane))
+    				{
+    					replacementLane = new Lane();
+    					replacementLane.setName(nextLane.getName());
+    					replacementLane.setId(nextLane.getId()+"-"+UUID.randomUUID().toString());
+    					replacementLane.setParentProcess(nextLane.getParentProcess());
+    					nextLane.getParentProcess().getLanes().add(replacementLane);
+    				}
+    				else
+    				{
+    					replacementLane = nextLane;
+    				}
+    			}
+    			done.add(nextLane);
+				currentLane = nextLane;
+    			if (replacementLane == null)
+    			{
+    				replacementLane = currentLane;
+    			}
+    			if (replacementLane != currentLane)
+    			{
+    				for (mxGraphHierarchyNode node: laneNodeMap.get(currentLane))
+    				{
+    					String id = ((mxCell)node.cell).getId();
+    					ListIterator<String> l = currentLane.getFlowReferences().listIterator();
+    					while (l.hasNext())
+    					{
+    						if (l.next().equals(id))
+    						{
+    							l.remove();
+    							break;
+    						}
+    					}
+    					replacementLane.getFlowReferences().add(id);
+    				}
+    			}
+    		}
+    		
+		}
+		
 		if (minRank < 0)
 		{
 			for (Map.Entry<Object, mxGraphHierarchyNode> e : model.getVertexMapper().entrySet())
@@ -898,6 +955,9 @@ public class BpmnAutoLayout {
 				model.maxRank = Math.max(model.maxRank, e.getValue().temp[0]);
 			}
 		}
+		
+		
+		
 //		
 //		ranks = getCellsByRank();
 //		for (int i=model.maxRank; i >= 0; i--)
