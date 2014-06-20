@@ -16,6 +16,7 @@ package org.activiti.bpmn;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
+import java.util.Comparator;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Hashtable;
@@ -53,6 +54,7 @@ import com.mxgraph.model.mxGeometry;
 import com.mxgraph.model.mxIGraphModel;
 import com.mxgraph.util.mxConstants;
 import com.mxgraph.util.mxPoint;
+import com.mxgraph.util.mxRectangle;
 import com.mxgraph.view.mxCellState;
 import com.mxgraph.view.mxEdgeStyle;
 import com.mxgraph.view.mxGraph;
@@ -83,6 +85,7 @@ public class BpmnAutoLayout {
   protected Map<String, Object> generatedEdges;
   protected Map<String, mxCell> elementParent;
   protected Map<String, Lane> elementLane;
+  protected Map<Lane, Set<Object>> laneContainedCells;
   protected Set<Object> fakeEdges;
   protected int direction; 
   protected boolean lanesAsGroups;
@@ -113,6 +116,7 @@ public class BpmnAutoLayout {
     List<mxCell> laneCells = new ArrayList<mxCell>();
     elementParent = new HashMap<String, mxCell>();
     elementLane = new HashMap<String, Lane>();
+    laneContainedCells = new HashMap<Lane, Set<Object>>();
     if (flowElementsContainer instanceof Process)
     {
     	Process process = (Process)flowElementsContainer;
@@ -221,7 +225,7 @@ public class BpmnAutoLayout {
 	graph.removeCells(fakeEdges.toArray());
 	graph.removeCells(fakeVertices.toArray());
 	
-    graph.getModel().endUpdate();
+    graph.getModel().endUpdate();    
     
     generateDiagramInterchangeElements();
   }
@@ -349,6 +353,51 @@ public class BpmnAutoLayout {
   protected void generateDiagramInterchangeElements() {
     generateActivityDiagramInterchangeElements();
     generateSequenceFlowDiagramInterchangeElements();
+    generateLaneDiagramInterchangeElements();
+  }
+  
+  protected void generateLaneDiagramInterchangeElements()
+  {
+	    mxRectangle r = graph.getView().getGraphBounds();
+	    
+	    List<GraphicInfo> laneGis = new ArrayList<GraphicInfo>();
+	    for (Map.Entry<Lane, Set<Object>> e : laneContainedCells.entrySet())
+	    {
+	    	mxRectangle lr = graph.getView().getBoundingBox(e.getValue().toArray());
+	    	FlowElement f = new FlowElement() {
+				
+				@Override
+				public FlowElement clone() {
+					// TODO Auto-generated method stub
+					return null;
+				}
+			};
+			f.setId(e.getKey().getId());
+			f.setName(e.getKey().getName());
+			GraphicInfo graphicInfo = createDiagramInterchangeInformation(f, 
+	                (int) 0, (int) lr.getY(), (int) r.getWidth(), (int) lr.getHeight());
+			laneGis.add(graphicInfo);
+	    }
+	    Collections.sort(laneGis, new Comparator<GraphicInfo>() {
+
+			@Override
+			public int compare(GraphicInfo o1, GraphicInfo o2) {
+				return Double.compare(o1.getY(), o2.getY());
+			}
+	    	
+		});
+	    laneGis.get(0).setX(0);
+	    for (int i=1;i<laneGis.size();i++)
+	    {
+	    	double adjust = ((laneGis.get(i).getY()-(laneGis.get(i-1).getY() + laneGis.get(i-1).getHeight()))/3.0);
+	    	laneGis.get(i-1).setHeight(laneGis.get(i-1).getHeight()+adjust);
+	    	laneGis.get(i).setY(laneGis.get(i).getY()-(adjust*2));
+	    	laneGis.get(i).setHeight(laneGis.get(i).getHeight()+(adjust*2));
+	    }
+	    GraphicInfo last = laneGis.get(laneGis.size()-1);
+	    last.setHeight(r.getHeight()-last.getY());
+	    
+	    
   }
   
   protected void generateActivityDiagramInterchangeElements() {
@@ -926,11 +975,17 @@ public class BpmnAutoLayout {
     			{
     				replacementLane = currentLane;
     			}
-    			if (replacementLane != currentLane)
-    			{
-    				for (mxGraphHierarchyNode node: laneNodeMap.get(currentLane))
-    				{
-    					String id = ((mxCell)node.cell).getId();
+				for (mxGraphHierarchyNode node: laneNodeMap.get(currentLane))
+				{
+					String id = ((mxCell)node.cell).getId();
+					if (!laneContainedCells.containsKey(replacementLane))
+					{
+						laneContainedCells.put(replacementLane, new HashSet<Object>());
+					}
+					laneContainedCells.get(replacementLane).add(node.cell);
+					
+	    			if (replacementLane != currentLane)
+	    			{
     					ListIterator<String> l = currentLane.getFlowReferences().listIterator();
     					while (l.hasNext())
     					{
