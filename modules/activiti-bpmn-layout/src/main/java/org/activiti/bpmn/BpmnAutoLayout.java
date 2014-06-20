@@ -75,6 +75,10 @@ public class BpmnAutoLayout {
   protected int taskWidth = 100;
   protected int taskHeight = 60;
   protected int subProcessMargin = 20;
+  protected int insetX = 50;
+  protected int insetY = 40;
+  protected int laneInsetX = 10;
+  protected int laneInsetY = 10;
   
   protected mxGraph graph;
   private Object cellParent;
@@ -375,7 +379,7 @@ public class BpmnAutoLayout {
 			f.setId(e.getKey().getId());
 			f.setName(e.getKey().getName());
 			GraphicInfo graphicInfo = createDiagramInterchangeInformation(f, 
-	                (int) 0, (int) lr.getY(), (int) r.getWidth(), (int) lr.getHeight());
+	                (int) 0-insetX, (int) lr.getY()-insetY, (int) r.getWidth(), (int) lr.getHeight());
 			laneGis.add(graphicInfo);
 	    }
 	    Collections.sort(laneGis, new Comparator<GraphicInfo>() {
@@ -386,6 +390,8 @@ public class BpmnAutoLayout {
 			}
 	    	
 		});
+	    laneGis.get(0).setHeight(laneGis.get(0).getHeight()+laneGis.get(0).getY());
+	    laneGis.get(0).setY(0);
 	    laneGis.get(0).setX(0);
 	    for (int i=1;i<laneGis.size();i++)
 	    {
@@ -397,8 +403,17 @@ public class BpmnAutoLayout {
 	    GraphicInfo last = laneGis.get(laneGis.size()-1);
 	    last.setHeight(r.getHeight()-last.getY());
 	    
+	    for (GraphicInfo gi : laneGis)
+	    {
+	    	gi.setX(gi.getX()+laneInsetX);
+	    	gi.setWidth(gi.getWidth()+((insetX-laneInsetX)*2));
+	    	gi.setY(gi.getY()+insetY);
+	    }
 	    
-  }
+	    laneGis.get(0).setY(laneGis.get(0).getY()-(insetY-laneInsetY));
+	    laneGis.get(0).setHeight(laneGis.get(0).getHeight()+(insetY-laneInsetY));
+	    last.setHeight(last.getHeight()+(insetY-laneInsetY));
+  }		
   
   protected void generateActivityDiagramInterchangeElements() {
     for (String flowElementId : generatedVertices.keySet()) {
@@ -622,8 +637,8 @@ public class BpmnAutoLayout {
   
   protected GraphicInfo createDiagramInterchangeInformation(FlowElement flowElement, int x, int y, int width, int height) {
     GraphicInfo graphicInfo = new GraphicInfo();
-    graphicInfo.setX(x);
-    graphicInfo.setY(y);
+    graphicInfo.setX(x+insetX);
+    graphicInfo.setY(y+insetY);
     graphicInfo.setWidth(width);
     graphicInfo.setHeight(height);
     graphicInfo.setElement(flowElement);
@@ -637,8 +652,8 @@ public class BpmnAutoLayout {
     for (mxPoint waypoint : waypoints) {
       GraphicInfo graphicInfo = new GraphicInfo();
       graphicInfo.setElement(sequenceFlow);
-      graphicInfo.setX(waypoint.getX());
-      graphicInfo.setY(waypoint.getY());
+      graphicInfo.setX(waypoint.getX()+insetX);
+      graphicInfo.setY(waypoint.getY()+insetY);
       graphicInfoForWaypoints.add(graphicInfo);
     }
     bpmnModel.addFlowGraphicInfoList(sequenceFlow.getId(), graphicInfoForWaypoints);
